@@ -46,7 +46,7 @@ To ensure full results, please verify you have the following permissions:
 2. **Launch Azure Cloud Shell (Bash)**  
    - Click on the Cloud Shell icon in the top bar of the portal.  
    - Select **Bash** as the environment.  
-   - *Screenshot here: [Open Cloud Shell]*
+   ![Bash](S-Screenshots/Bash.png)
 
 3. **Run the script**  
    Copy and paste the following command:
@@ -97,3 +97,7 @@ If you are already in the correct tenant and Cloud Shell (Bash), just run:
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Guyashkenazi6/azure-env-discovery/refs/heads/main/azure-env-discovery.sh)"
 ```
 That’s it — you’ll get both CSV and JSON outputs ready to download.
+![Example](S-Screenshots/Example.png)
+![CSV](S-Screenshots/CSV_example.png)
+
+
