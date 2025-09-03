@@ -52,7 +52,7 @@ To ensure full results, please verify you have the following permissions:
    Copy and paste the following command:
 
    ```bash
-   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Guyashkenazi6/azure-env-discovery/refs/heads/main/azure-env-discovery.sh"
+   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Guyashkenazi6/azure-env-discovery/refs/heads/main/azure-env-discovery.sh)"
    ```
 
 The script will execute and generate the output files directly in your Cloud Shell home directory.
