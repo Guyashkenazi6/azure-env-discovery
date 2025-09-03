@@ -22,8 +22,7 @@ When you run the script, it will:
 3. Collect subscription policies such as OfferType, QuotaId, and SpendingLimit.  
 4. Identify all **Owner role assignments** (including inherited permissions).  
 5. Generate two output files with the collected data:  
-   - **CSV file** → easy to open in Excel.  
-   - **JSON file** → structured format for automation or advanced analysis.  
+   - **CSV file** → easy to open in Excel. 
 
 ---
 
@@ -63,8 +62,6 @@ The script will execute and generate the output files directly in your Cloud She
 
 After running, you will find:
 	•	azure_env_discovery_<timestamp>.csv → Excel-friendly table
-	•	azure_env_discovery_<timestamp>.json → Detailed structured data
-
 ---
 
 📥 How to Download the Files
@@ -72,7 +69,7 @@ After running, you will find:
 Download via Cloud Shell GUI
 
 	•	In the Cloud Shell window, click the Download/Upload icon (📂⬇️).
-	•	Select Download and choose your CSV/JSON files.
+	•	Select Download and choose your CSV file.
    ![Manage Files](S-Screenshots/Manage-Files.png)
 
    ![Download Files](S-Screenshots/Download.png)
@@ -83,7 +80,7 @@ Download via Cloud Shell GUI
 
 📤 How to Send Back the Files
 	
- 	•	Download the CSV and JSON files to your local machine (see above).
+ 	•	Download the CSV file to your local machine (see above).
  	•	Send them back via email, Teams, or any other secure channel you prefer.
 
 ---
@@ -100,9 +97,9 @@ If you are already in the correct tenant and Cloud Shell (Bash), just run:
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Guyashkenazi6/azure-env-discovery/refs/heads/main/azure-env-discovery.sh)"
 ```
-That’s it — you’ll get both CSV and JSON outputs ready to download.
-![Example](S-Screenshots/Example.png)
-![CSV](S-Screenshots/CSV_example.png)
-![JSON](S-Screenshots/Json.png)
+That’s it — you’ll get both CSV output ready to download.
+![Example](S-Screenshots/Example2.png)
+![CSV](S-Screenshots/CSV2.png)
+
 
 
