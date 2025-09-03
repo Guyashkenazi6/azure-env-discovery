@@ -78,7 +78,6 @@ Download via Cloud Shell GUI
 📤 How to Send Back the Files
 	
  	•	Download the CSV and JSON files to your local machine (see above).
-	
  	•	Send them back via email, Teams, or any other secure channel you prefer.
 
 ---
