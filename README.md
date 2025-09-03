@@ -69,14 +69,16 @@ After running, you will find:
 
 📥 How to Download the Files
 
-Option 1 – Download via Cloud Shell GUI
+Download via Cloud Shell GUI
 	•	In the Cloud Shell window, click the Download/Upload icon (📂⬇️).
 	•	Select Download and choose your CSV/JSON files.
 	•	Screenshot here: [Download Button]
 
 📤 How to Send Back the Files
-	1.	Download the CSV and JSON files to your local machine (see above).
-	2.	Send them back via email, Teams, or any other secure channel you prefer.
+	
+ 	•	Download the CSV and JSON files to your local machine (see above).
+	
+ 	•	Send them back via email, Teams, or any other secure channel you prefer.
 
 ---
 
