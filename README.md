@@ -77,6 +77,10 @@ Download via Cloud Shell GUI
 
    ![Download Files](S-Screenshots/Download.png)
 
+![Download Files](S-Screenshots/Download_File.png)
+
+
+
 📤 How to Send Back the Files
 	
  	•	Download the CSV and JSON files to your local machine (see above).
@@ -99,5 +103,6 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Guyashkenazi6/azure-env-
 That’s it — you’ll get both CSV and JSON outputs ready to download.
 ![Example](S-Screenshots/Example.png)
 ![CSV](S-Screenshots/CSV_example.png)
+![JSON](S-Screenshots/Json.png)
 
 
