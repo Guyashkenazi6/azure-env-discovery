@@ -73,7 +73,9 @@ Download via Cloud Shell GUI
 
 	•	In the Cloud Shell window, click the Download/Upload icon (📂⬇️).
 	•	Select Download and choose your CSV/JSON files.
-	•	Screenshot here: [Download Button]
+   ![Manage Files](S-Screenshots/Manage-Files.png)
+
+   ![Download Files](S-Screenshots/Download.png)
 
 📤 How to Send Back the Files
 	
