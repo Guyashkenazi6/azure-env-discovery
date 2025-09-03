@@ -41,8 +41,7 @@ To ensure full results, please verify you have the following permissions:
 
 1. **Open the correct Azure Directory**  
    - Go to the Azure Portal.  
-   - On the top-right, click **Directory + Subscription** and switch to the correct tenant (organization).  
-   - *Screenshot here: [Switch Directory]*
+   - On the top-right, click **Directory + Subscription** and switch to the correct tenant (organization).
 
 2. **Launch Azure Cloud Shell (Bash)**  
    - Click on the Cloud Shell icon in the top bar of the portal.  
