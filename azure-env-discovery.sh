@@ -1,28 +1,37 @@
 #!/usr/bin/env bash
-# This script discovers Azure environment details, including tenants, subscriptions, and billing information.
-# It outputs the collected data into JSON, CSV, and a human-readable table format.
+# Azure Environment Discovery (quiet & robust)
+# Collects high-level info: tenant, subscriptions, owners, offer/plan, billing agreement.
+# Writes CSV + JSON. Avoids interactive prompts & stray output in CSV.
+
 set -uo pipefail
 MISSING="MISSING"
 
 echo "== Azure Environment Discovery =="
-# Attempt to log in to Azure if not already authenticated
-az account show >/dev/null 2>&1 || az login -o none || true
 
-# --- Configuration and Output File Setup ---
-# Timestamp for unique file naming
+# --- Helper: quiet az wrapper (adds --only-show-errors) ---
+azq() { az --only-show-errors "$@"; }
+
+# --- Login (non-fatal if already logged in) ---
+azq account show >/dev/null 2>&1 || azq login -o none || true
+
+# --- Ensure required extensions (quiet, non-interactive) ---
+# 'account' is needed for `az account tenant list` on some installations.
+azq extension show --name account >/dev/null 2>&1 || azq extension add --name account -y >/dev/null 2>&1 || true
+# 'billing' may be required for `az billing account list` (safe to try).
+azq extension show --name billing >/dev/null 2>&1 || azq extension add --name billing -y >/dev/null 2>&1 || true
+
+# --- Timestamp & outputs ---
 TS=$(date +%Y%m%d_%H%M%S)
-# Define output file names
 OUT_JSON="azure_env_discovery_${TS}.json"
 OUT_CSV="azure_env_discovery_${TS}.csv"
 
-# --- Tenant Information Collection ---
-# Tenant display name (best-effort)
-TENANT_NAME=$(az account tenant list -o tsv --query '[0].displayName' 2>/dev/null || echo "$MISSING")
+# --- Tenant name (best-effort, silenced) ---
+TENANT_NAME=$(azq account tenant list -o tsv --query '[0].displayName' 2>/dev/null || echo "$MISSING")
 [ -z "$TENANT_NAME" ] && TENANT_NAME="$MISSING"
 
 echo "Collecting billing accounts (EA/MCA/PAYG hint)..."
-# --- Billing Account Information Collection ---
-BILLING_JSON=$(az billing account list -o json 2>/dev/null || echo "[]")
+# --- Billing accounts (silenced) ---
+BILLING_JSON=$(azq billing account list -o json 2>/dev/null || echo "[]")
 BILLING_COUNT=$(echo "$BILLING_JSON" | jq 'length' 2>/dev/null || echo 0)
 AGREEMENT_TYPE="$MISSING"
 if [ "$BILLING_COUNT" -eq 1 ]; then
@@ -32,34 +41,23 @@ elif [ "$BILLING_COUNT" -gt 1 ]; then
 fi
 
 echo "Enumerating subscriptions..."
-# --- Subscription Information Collection ---
-SUBS_JSON=$(az account list --all -o json 2>/dev/null || echo "[]")
+SUBS_JSON=$(azq account list --all -o json 2>/dev/null || echo "[]")
 
-# --- Function to Classify Subscription Plan ---
+# --- Plan classifier ---
 classify_plan() {
   local quota="${1:-}"
   local offerType="${2:-}"
-  
-  # Handle empty quota and offerType explicitly
+
   if [[ -z "$quota" && -z "$offerType" ]]; then
-    echo "$MISSING"
-    return
+    echo "$MISSING"; return
   fi
-  
-  # Explicit patterns for sponsored/concierge subscriptions
+
   case "$quota" in
-    *Sponsored*|*CONCIERGE*|*Concierge*) 
-      echo "Sponsored/Concierge"; 
-      return;;
+    *Sponsored*|*CONCIERGE*|*Concierge*) echo "Sponsored/Concierge"; return;;
   esac
-  
-  # Check for Pay-As-You-Go offer type
-  if [[ "$offerType" =~ Pay-As-You-Go ]]; then 
-    echo "PAYG"; 
-    return; 
-  fi
-  
-  # Classify based on Quota ID
+
+  if [[ "$offerType" =~ Pay-As-You-Go ]]; then echo "PAYG"; return; fi
+
   case "$quota" in
     *MS-AZR-0017P*|*MS-AZR-0023P*) echo "PAYG";;
     *MS-AZR-0145P*|*MS-AZR-0148P*) echo "EA Dev/Test";;
@@ -71,13 +69,11 @@ classify_plan() {
 
 RESULTS=()
 
-# --- CSV Header ---
+# --- CSV header ---
 echo "TenantName,TenantId,SubscriptionId,SubscriptionName,State,OfferType,QuotaId,SpendingLimit,PlanGuess,BillingAgreementType,IsDefault,Owners" > "$OUT_CSV"
 
-# --- Process Each Subscription ---
-# Iterate over each subscription and extract relevant details
+# --- Iterate subscriptions (quiet) ---
 jq -c '.[]' <<< "$SUBS_JSON" 2>/dev/null | while read -r sub; do
-  # Extract basic subscription details
   SUB_ID=$(jq -r '.id // "'$MISSING'"' <<< "$sub" 2>/dev/null || echo "$MISSING")
   SUB_NAME=$(jq -r '.name // "'$MISSING'"' <<< "$sub" 2>/dev/null || echo "$MISSING")
   TENANT_ID=$(jq -r '.tenantId // "'$MISSING'"' <<< "$sub" 2>/dev/null || echo "$MISSING")
@@ -85,32 +81,35 @@ jq -c '.[]' <<< "$SUBS_JSON" 2>/dev/null | while read -r sub; do
   OFFER_TYPE=$(jq -r '.offerType // "'$MISSING'"' <<< "$sub" 2>/dev/null || echo "$MISSING")
   IS_DEFAULT=$(jq -r '.isDefault // false' <<< "$sub" 2>/dev/null || echo false)
 
-  QUOTA_ID="$MISSING"; SPENDING_LIMIT="$MISSING"; OWNERS="(Missing)"
-  # Fetch additional details if subscription ID is available
+  QUOTA_ID="$MISSING"
+  SPENDING_LIMIT="$MISSING"
+  OWNERS="(Missing)"
+
   if [[ "$SUB_ID" != "$MISSING" ]]; then
-    # Get ARM subscription details for quota and spending limit
-    ARM_JSON=$(az rest --method get \
+    ARM_JSON=$(azq rest --method get \
       --url "https://management.azure.com/subscriptions/${SUB_ID}?api-version=2020-01-01" \
       -o json 2>/dev/null || echo '{}')
+
     QUOTA_ID=$(jq -r '.subscriptionPolicies.quotaId // "'$MISSING'"' <<< "$ARM_JSON" 2>/dev/null || echo "$MISSING")
     SPENDING_LIMIT=$(jq -r '.subscriptionPolicies.spendingLimit // "'$MISSING'"' <<< "$ARM_JSON" 2>/dev/null || echo "$MISSING")
 
-    # Get subscription owners (role assignments)
-    OWNERS_LIST=$(az role assignment list \
+    OWNERS_LIST=$(azq role assignment list \
       --subscription "$SUB_ID" --role "Owner" --include-inherited \
       -o json 2>/dev/null || echo "[]")
+
+    # Note: keep owners on one CSV cell separated by semicolons
     OWNERS=$(jq -r '.[] | "\(.principalName // "-")(\(.principalType // "-"))"' <<< "$OWNERS_LIST" 2>/dev/null | paste -sd';' - 2>/dev/null)
     [ -z "${OWNERS:-}" ] && OWNERS="(Missing)"
   fi
 
   PLAN_GUESS=$(classify_plan "$QUOTA_ID" "$OFFER_TYPE")
 
-  # Write subscription details to CSV
+  # --- CSV row (quote strings to keep commas/newlines safe) ---
   printf '"%s",%s,"%s","%s",%s,"%s","%s","%s","%s","%s",%s,"%s"\n' \
     "$TENANT_NAME" "$TENANT_ID" "$SUB_ID" "$SUB_NAME" "$STATE" "$OFFER_TYPE" "$QUOTA_ID" "$SPENDING_LIMIT" \
     "$PLAN_GUESS" "$AGREEMENT_TYPE" "$IS_DEFAULT" "$OWNERS" >> "$OUT_CSV"
 
-  # Aggregate results into an array for JSON output
+  # --- JSON array item ---
   RESULTS+=("$(jq -n \
     --arg tenantName "$TENANT_NAME" \
     --arg tenantId "$TENANT_ID" \
@@ -141,8 +140,9 @@ jq -c '.[]' <<< "$SUBS_JSON" 2>/dev/null | while read -r sub; do
   )")
 done
 
-# --- Final JSON Output Compilation ---
+# --- Final JSON ---
 SUBS_AGG=$(printf '%s\n' "${RESULTS[@]:-}" | jq -s '.' 2>/dev/null || echo '[]')
+
 jq -n --arg generatedAt "$(date -Iseconds)" --arg host "$(hostname)" \
   --arg overallAgreementType "$AGREEMENT_TYPE" \
   --argjson billingAccounts "$BILLING_JSON" \
@@ -153,9 +153,11 @@ jq -n --arg generatedAt "$(date -Iseconds)" --arg host "$(hostname)" \
     overallAgreementType: $overallAgreementType,
     billingAccounts: $billingAccounts,
     subscriptions: $subscriptions
-  }' > "$OUT_JSON" 2>/dev/null || echo "{\"generatedAt\":\"$(date -Iseconds)\",\"overallAgreementType\":\"$AGREEMENT_TYPE\",\"billingAccounts\":[],\"subscriptions\":[]}" > "$OUT_JSON"
+  }' > "$OUT_JSON" 2>/dev/null || {
+    echo "{\"generatedAt\":\"$(date -Iseconds)\",\"overallAgreementType\":\"$AGREEMENT_TYPE\",\"billingAccounts\":[],\"subscriptions\":[]}" > "$OUT_JSON"
+  }
 
 echo
 echo "Done."
-echo "CSV:     $OUT_CSV"
-echo "JSON:    $OUT_JSON"
+echo "CSV:  $OUT_CSV"
+echo "JSON: $OUT_JSON"
