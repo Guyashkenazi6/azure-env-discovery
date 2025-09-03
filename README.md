@@ -83,6 +83,7 @@ Download via Cloud Shell GUI
 ---
 
 📌 Notes
+
 	•	If some fields appear as MISSING, it usually means your account does not have the required permissions (e.g., Billing Reader).
 	•	The script will not fail if information is missing – it will simply mark missing fields instead.
 	•	The script only reads metadata; it does not modify or delete anything in your environment.
