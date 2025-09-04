@@ -47,6 +47,9 @@ For best results, make sure your user has:
 
 The script will execute and generate the output files directly in your Cloud Shell home directory.
 
+That’s it — you’ll get the CSV output ready to download.
+![Example](S-Screenshots/Example3.png)
+
 ---
 
 📂 Output Files
@@ -68,13 +71,14 @@ Download via Cloud Shell GUI
 ![Download Files](S-Screenshots/Download_File.png)
 
 
-
 📤 How to Send Back the Files
 	
  	•	Download the CSV file to your local machine (see above).
  	•	Send them back via email, Teams, or any other secure channel you prefer.
 
 ---
+
+![CSV](S-Screenshots/CSV3.png)
 
 ## 🧾 CSV Columns (what you’ll see)
 
@@ -85,19 +89,6 @@ Download via Cloud Shell GUI
 | **Sub. Owner**           | One of: Account Admin email (classic), Billing Owner email (MCA, if permitted), or clear guidance like:<br> → *“Check in Portal – classic subscription”*<br> → *“Check in Billing (MCA)”*<br> → *“Managed by partner – CSP”* |
 | **Transferable (Internal)** | **Yes** for EA and Pay-As-You-Go, otherwise **No** (per Microsoft transfer matrix) |
 
----
-
-### 🔍 How the Script Decides **Sub. Type**
-The classification is primarily based on **quotaId** (from ARM):
-
-- `MSDN_*` → **MSDN**  
-- `PayAsYouGo_2014-09-01` / `MS-AZR-0003P` / `MS-AZR-0017P` / `MS-AZR-0023P` → **Pay-As-You-Go**  
-- `MS-AZR-0145P` / `MS-AZR-0148P` / `MS-AZR-0033P` / `MS-AZR-0034P` → **EA**  
-
-Additional rules:
-- If `authorizationSource == ByPartner` → **CSP**  
-- If ARM access is **forbidden** but **billing linkage exists** → **MCA-online**  
-
 
 ⚡ Quick Start (for advanced users)
 
@@ -105,9 +96,7 @@ If you are already in the correct tenant and Cloud Shell (Bash), just run:
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Guyashkenazi6/azure-env-discovery/refs/heads/main/azure-env-discovery.sh)"
 ```
-That’s it — you’ll get both CSV output ready to download.
-![Example](S-Screenshots/Example2.png)
-![CSV](S-Screenshots/CSV2.png)
+
 
 ## 🧭 When the CSV Says “Check in Portal” – What to Do
 
@@ -144,6 +133,20 @@ If the **Sub. Owner** column shows:
 6. Copy the email address shown there — this is the **Account Admin (Owner)** of the subscription.  
 
 ---
+
+### 🔍 How the Script Decides **Sub. Type**
+The classification is primarily based on **quotaId** (from ARM):
+
+- `MSDN_*` → **MSDN**  
+- `PayAsYouGo_2014-09-01` / `MS-AZR-0003P` / `MS-AZR-0017P` / `MS-AZR-0023P` → **Pay-As-You-Go**  
+- `MS-AZR-0145P` / `MS-AZR-0148P` / `MS-AZR-0033P` / `MS-AZR-0034P` → **EA**  
+
+Additional rules:
+- If `authorizationSource == ByPartner` → **CSP**  
+- If ARM access is **forbidden** but **billing linkage exists** → **MCA-online**  
+
+---
+
 ## 📌 MCA / CSP Notes
 
 - **MCA**: There’s no *Account Admin*. Ownership is managed under **Cost Management + Billing → Role assignments**.  
