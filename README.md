@@ -101,5 +101,40 @@ That’s it — you’ll get both CSV output ready to download.
 ![Example](S-Screenshots/Example2.png)
 ![CSV](S-Screenshots/CSV2.png)
 
+# 🔑 How to Find the **Account Admin** in the Azure Portal
+
+In some cases, the script cannot automatically retrieve the **Account Admin** (for example, with **MSDN**, **Pay-As-You-Go**, or legacy **EA** subscriptions).  
+When this happens, the CSV will show guidance such as:  
+
+- **"Check in Portal – classic subscription"**  
+- **"Check in EA portal – Account Owner"**
+
+👉 If you see one of these in the **CSV output**, follow the steps below to get the information manually.
+
+---
+
+## Step-by-Step Instructions
+
+1. Sign in to the [Azure Portal](https://portal.azure.com).  
+2. In the left-hand menu, go to **Subscriptions**.  
+3. Select the **subscription** you want to check.  
+4. In the subscription’s menu, go to **Settings → Properties**.  
+   - In some UI versions, you may just see **Properties** directly in the menu.  
+5. In the **Properties** blade, look for the field **Account admin**.  
+6. Copy the email address shown there — this is the **Account Admin (Owner)** of the subscription.  
+
+---
+
+## Notes
+
+- If the **Account Admin** looks like:  
+  `user_domain#EXT#@tenant.onmicrosoft.com` → this means it’s an **External (Guest)** account.  
+  The original email is usually `user@domain.com`.  
+- For **Microsoft Customer Agreement (MCA)** or **CSP** subscriptions, there is no “Account Admin”.  
+  - In these cases, ownership is managed in **Billing → Role assignments**.  
+  - The script already shows this as **"Check in Billing (MCA)"** or **"Managed by partner – CSP"**.  
+- If the field is not visible, you may not have permission. Ask someone with **Owner** or **Billing Reader** access to open the same page and share the value.
+
+---
 
 
