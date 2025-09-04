@@ -1,38 +1,29 @@
 # Azure Environment Discovery
 
 ## 🎯 Purpose
-This script collects **high-level information** about your Azure environment to provide a clear overview before diving into technical details.  
-It helps identify:
+This script collects **high-level information** about your Azure environment so we can quickly understand **who owns what** and **what type of subscriptions** you run—without touching any resources.
 
-- **Tenant information** (tenant name and ID)  
-- **Subscriptions** (list of all subscriptions and their state)  
-- **Owners** (who has Owner rights on each subscription)  
-- **Plan / Offer type** (Pay-As-You-Go, Enterprise Agreement (EA), Microsoft Customer Agreement (MCA), Sponsored/Concierge, Dev/Test, etc.)  
-- **Billing agreement type** (EA / MCA / PAYG, if available)
+It identifies:
 
-This “big picture” allows us to quickly understand **who owns what** and **what type of environment you are running**.
+- **Tenant & subscriptions** (IDs and states)
+- **Subscription type (Offer)** – e.g., **MSDN**, **Pay-As-You-Go (MOSP)**, **EA**, **MCA**, **CSP**
+- **Owner**:
+  - **Classic subscriptions (MSDN / PAYG / legacy EA):** returns the **Account Admin** (when visible via API) or tells you exactly where to check in the portal
+  - **MCA:** returns **Billing Owner** if you have Billing Reader; otherwise guidance
+  - **CSP:** marks as partner-managed
+- **Transferable (Internal)** – quick Yes/No per Microsoft’s rules for transferring to **EA**
 
----
-
-## 🛠️ What does the script do?
-When you run the script, it will:
-
-1. Connect to your Azure environment using **Azure Cloud Shell (Bash)**.  
-2. Retrieve a list of tenants and subscriptions.  
-3. Collect subscription policies such as OfferType, QuotaId, and SpendingLimit.  
-4. Identify all **Owner role assignments** (including inherited permissions).  
-5. Generate two output files with the collected data:  
-   - **CSV file** → easy to open in Excel. 
+> ✅ The script is **READ-ONLY**. It does not modify or delete anything.
 
 ---
 
 ## ✅ Prerequisites
 
-To ensure full results, please verify you have the following permissions:
+For best results, make sure your user has:
 
-- **Reader** role on all subscriptions you want to map.  
-- **Billing Reader** role on the billing account (to detect EA / MCA / PAYG).  
-- Access to **Role Assignments** at the Management Group or Root level (to capture inherited Owner roles).  
+- **Reader** on the subscriptions you want to map  
+- **Billing Reader** on the relevant **Billing Account / Billing Profile** (for MCA ownership)  
+- (Optional) Access to classic info improves “Account Admin” retrieval on **MSDN / PAYG / legacy EA**
 
 ---
 
@@ -85,11 +76,28 @@ Download via Cloud Shell GUI
 
 ---
 
-📌 Notes
+## 🧾 CSV Columns (what you’ll see)
 
-	•	If some fields appear as MISSING, it usually means your account does not have the required permissions (e.g., Billing Reader).
-	•	The script will not fail if information is missing – it will simply mark missing fields instead.
-	•	The script only reads metadata; it does not modify or delete anything in your environment.
+| Column                  | What it means                                                                 |
+|--------------------------|-------------------------------------------------------------------------------|
+| **Subscription ID**      | The subscription GUID                                                        |
+| **Sub. Type**            | Offer classification: **MSDN**, **Pay-As-You-Go**, **EA**, **MCA-online**, **CSP**, or **Not available** (no API access) |
+| **Sub. Owner**           | One of: Account Admin email (classic), Billing Owner email (MCA, if permitted), or clear guidance like:<br> → *“Check in Portal – classic subscription”*<br> → *“Check in Billing (MCA)”*<br> → *“Managed by partner – CSP”* |
+| **Transferable (Internal)** | **Yes** for EA and Pay-As-You-Go, otherwise **No** (per Microsoft transfer matrix) |
+
+---
+
+### 🔍 How the Script Decides **Sub. Type**
+The classification is primarily based on **quotaId** (from ARM):
+
+- `MSDN_*` → **MSDN**  
+- `PayAsYouGo_2014-09-01` / `MS-AZR-0003P` / `MS-AZR-0017P` / `MS-AZR-0023P` → **Pay-As-You-Go**  
+- `MS-AZR-0145P` / `MS-AZR-0148P` / `MS-AZR-0033P` / `MS-AZR-0034P` → **EA**  
+
+Additional rules:
+- If `authorizationSource == ByPartner` → **CSP**  
+- If ARM access is **forbidden** but **billing linkage exists** → **MCA-online**  
+
 
 ⚡ Quick Start (for advanced users)
 
@@ -101,14 +109,23 @@ That’s it — you’ll get both CSV output ready to download.
 ![Example](S-Screenshots/Example2.png)
 ![CSV](S-Screenshots/CSV2.png)
 
-# 🔑 How to Find the **Account Admin** in the Azure Portal
+## 🧭 When the CSV Says “Check in Portal” – What to Do
 
-In some cases, the script cannot automatically retrieve the **Account Admin** (for example, with **MSDN**, **Pay-As-You-Go**, or legacy **EA** subscriptions).  
-When this happens, the CSV will show guidance such as:  
+Sometimes the **Account Admin** isn’t retrievable via API (common with **MSDN**, **Pay-As-You-Go**, or legacy **EA**).  
+If the **Sub. Owner** column shows:  
 
-- **"Check in Portal – classic subscription"**  
-- **"Check in EA portal – Account Owner"**
+- *“Check in Portal – classic subscription”*  
+- *“Check in EA portal – Account Owner”*  
 
+👉 Follow these steps manually:
+
+1. Sign in to the [Azure Portal](https://portal.azure.com).  
+2. Go to **Subscriptions**.  
+3. Select the relevant subscription.  
+4. Open **Settings → Properties** (or directly **Properties** in some UI versions).  
+5. Copy the value under **Account admin** — that’s the subscription’s **classic owner**.
+
+---
 👉 If you see one of these in the **CSV output**, follow the steps below to get the information manually.
 
 ---
@@ -127,17 +144,24 @@ When this happens, the CSV will show guidance such as:
 6. Copy the email address shown there — this is the **Account Admin (Owner)** of the subscription.  
 
 ---
+## 📌 MCA / CSP Notes
 
-## Notes
+- **MCA**: There’s no *Account Admin*. Ownership is managed under **Cost Management + Billing → Role assignments**.  
+  - The script will try to show the **Billing Owner** if you have the **Billing Reader** role.  
+  - Otherwise, you’ll see: *“Check in Billing (MCA)”*.  
 
-- If the **Account Admin** looks like:  
-  `user_domain#EXT#@tenant.onmicrosoft.com` → this means it’s an **External (Guest)** account.  
-  The original email is usually `user@domain.com`.  
-- For **Microsoft Customer Agreement (MCA)** or **CSP** subscriptions, there is no “Account Admin”.  
-  - In these cases, ownership is managed in **Billing → Role assignments**.  
-  - The script already shows this as **"Check in Billing (MCA)"** or **"Managed by partner – CSP"**.  
-- If the field is not visible, you may not have permission. Ask someone with **Owner** or **Billing Reader** access to open the same page and share the value.
+- **CSP**: These subscriptions are **partner-managed**.  
+  - You’ll see: *“Managed by partner – CSP”*.  
 
+---
+
+## 🔧 Troubleshooting
+
+- **“Not available” / missing values**  
+  - This usually means you don’t have access to ARM or Billing scopes.  
+  - Ask for:  
+    - **Reader** role (subscriptions)  
+    - **Billing Reader** role (billing account / profile / invoice section)  
 ---
 
 
