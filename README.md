@@ -117,10 +117,13 @@ When this happens, the CSV will show guidance such as:
 
 1. Sign in to the [Azure Portal](https://portal.azure.com).  
 2. In the left-hand menu, go to **Subscriptions**.  
-3. Select the **subscription** you want to check.  
+3. Select the **subscription** you want to check.
+  ![Step1](S-Screenshots/Steps1.png)
 4. In the subscription’s menu, go to **Settings → Properties**.  
-   - In some UI versions, you may just see **Properties** directly in the menu.  
+   - In some UI versions, you may just see **Properties** directly in the menu.
+  ![Step2](S-Screenshots/Steps2.png)  
 5. In the **Properties** blade, look for the field **Account admin**.  
+  ![Step3](S-Screenshots/Step3.png)
 6. Copy the email address shown there — this is the **Account Admin (Owner)** of the subscription.  
 
 ---
