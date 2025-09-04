@@ -9,7 +9,7 @@ export AZURE_CORE_NO_COLOR=1
 
 MISSING="Not available"
 
-echo "== Azure Properties to CSV (Portal-like) =="
+echo "== Azure Properties to CSV =="
 # Login if needed (no-op in Cloud Shell unless switching accounts)
 az account show --only-show-errors >/dev/null 2>&1 || az login --only-show-errors -o none || true
 
