@@ -1,113 +1,182 @@
 #!/usr/bin/env bash
-# Azure Environment Discovery -> Focused CSV for migration-to-EA decision
-# Columns: Subscription ID, Sub. Type, Sub. Owner, Transferable (Internal)
+# Azure Properties -> CSV (Portal-like, safe & read-only)
+# Columns: Subscription ID, Sub. Type (OFFER), Sub. Owner, Transferable (Internal)
+# READ-ONLY: no writes/changes.
 
-set -uo pipefail
+set -euo pipefail
 export AZURE_EXTENSION_USE_DYNAMIC_INSTALL=yes_without_prompt
 export AZURE_CORE_NO_COLOR=1
-MISSING="MISSING"
 
-echo "== Azure Environment Discovery (CSV for EA transfer) =="
+MISSING="Not available"
 
-# Login if needed (quiet)
+echo "== Azure Properties to CSV (Portal-like) =="
+# Login if needed (no-op in Cloud Shell unless switching accounts)
 az account show --only-show-errors >/dev/null 2>&1 || az login --only-show-errors -o none || true
 
-# Ensure useful extensions (quiet, non-fatal)
-az extension show --name account           --only-show-errors >/dev/null 2>&1 || az extension add --name account           -y --only-show-errors >/dev/null 2>&1 || true
-az extension show --name billing           --only-show-errors >/dev/null 2>&1 || az extension add --name billing           -y --only-show-errors >/dev/null 2>&1 || true
+# Ensure billing extension (for MCA owner lookup)
+az extension show --name billing --only-show-errors >/dev/null 2>&1 || az extension add --name billing -y --only-show-errors >/dev/null 2>&1 || true
 
 TS=$(date +%Y%m%d_%H%M%S)
 OUT_CSV="azure_env_discovery_${TS}.csv"
-
-# Header exactly as requested
 echo "Subscription ID,Sub. Type,Sub. Owner,Transferable (Internal)" > "$OUT_CSV"
 
-# Overall billing agreement (helps infer MCA)
-BILLING_JSON=$(az billing account list --only-show-errors -o json 2>/dev/null || echo "[]")
-OVERALL_AGREEMENT=$(jq -r '.[0].agreementType // empty' <<< "$BILLING_JSON" 2>/dev/null || echo "")
+# Cache overall agreement (used ONLY as a final fallback for MCA)
+BILLING_JSON="$(az billing account list --only-show-errors -o json 2>/dev/null || echo "[]")"
+OVERALL_AGR="$(jq -r '.[0].agreementType // empty' <<< "$BILLING_JSON" 2>/dev/null || echo "")"
 
-# Get subscriptions
-SUBS=$(az account list --all --only-show-errors -o json 2>/dev/null || echo "[]")
+# ---------- Helpers ----------
 
-# --- Helpers ---
-
-# Map QuotaId/OfferType to a plan label we can use in logic below.
-classify_plan() {
+# Classify offer/type primarily from quotaId (matches Portal semantics)
+offer_from_quota() {
   local quota="${1:-}"
-  local offerType="${2:-}"
-  local fallback="${3:-}"   # e.g. MCA-online if overall billing is MCA
 
-  # Explicit patterns first
+  # MSDN / Visual Studio (classic)
   case "$quota" in
-    *Sponsored*|*CONCIERGE*|*Concierge*) echo "Sponsored/Concierge"; return;;
-    *MS-AZR-0017P*|*MS-AZR-0023P*)       echo "PAYG"; return;;           # MOSP
-    *MS-AZR-0145P*|*MS-AZR-0148P*)       echo "EA"; return;;             # EA Dev/Test -> treat as EA
-    *MS-AZR-0033P*|*MS-AZR-0034P*)       echo "EA"; return;;
+    *MSDN*|*MSDN_*|*VisualStudio*|*VS*|*MS-AZR-0029P*|*MS-AZR-0062P*|*MS-AZR-0063P*)
+      echo "MSDN"; return;;
   esac
 
-  # OfferType string sometimes includes "Pay-As-You-Go"
-  if [[ "$offerType" =~ Pay-As-You-Go ]]; then echo "PAYG"; return; fi
+  # PAYG (MOSP classic) - includes PayAsYouGo_2014-09-01 and common PAYG codes
+  case "$quota" in
+    PayAsYouGo_2014-09-01|*MS-AZR-0003P*|*MS-AZR-0017P*|*MS-AZR-0023P*)
+      echo "Pay-As-You-Go"; return;;
+  esac
 
-  # If overall billing is MicrosoftCustomerAgreement and we couldn't classify → MCA-online (best-effort)
-  if [[ -n "$fallback" ]]; then
-    echo "$fallback"; return
-  fi
+  # EA (incl. Dev/Test)
+  case "$quota" in
+    *MS-AZR-0145P*|*MS-AZR-0148P*|*MS-AZR-0033P*|*MS-AZR-0034P*)
+      echo "EA"; return;;
+  esac
 
-  # Unknown
-  echo "Other"
+  echo ""
 }
 
-# Decide if transferable to EA (Yes/No) based on plan label
-is_transferable_to_EA() {
-  local plan="${1:-$MISSING}"
-  case "$plan" in
-    EA|PAYG) echo "Yes";;  # EA↔EA supported (ticket), MOSP→EA supported (ticket)
-    MCA-online|MCA-E|CSP|Previous\ CSP|Sponsored/Concierge|Other|$MISSING) echo "No";;
+# Transferability matrix (internal): Yes only for EA and PAYG
+transferable_to_ea() {
+  local offer="${1:-$MISSING}"
+  case "$offer" in
+    EA|Pay-As-You-Go) echo "Yes";;
     *) echo "No";;
   esac
 }
 
-# Fallback MCA label if overall billing shows MCA
-MCA_FALLBACK=""
-if [[ "$OVERALL_AGREEMENT" =~ MicrosoftCustomerAgreement ]]; then
-  # Treat unknowns as MCA-online by default (not enterprise rep flow)
-  MCA_FALLBACK="MCA-online"
-fi
+# Try to fetch Billing Owner (MCA) if caller has Billing Reader on the scope
+mca_billing_owner_for_sub() {
+  local sub_id="${1:-}"
+  local bsub ba bp is scope
+  bsub="$(az billing subscription show --subscription-id "$sub_id" -o json 2>/dev/null || echo "{}")"
+  ba="$(jq -r '.billingAccountId // empty' <<< "$bsub")"
+  bp="$(jq -r '.billingProfileId // empty' <<< "$bsub")"
+  is="$(jq -r '.invoiceSectionId // empty' <<< "$bsub")"
 
-# --- Process each subscription ---
-jq -c '.[]' <<< "$SUBS" 2>/dev/null | while read -r sub; do
-  SUB_ID=$(jq -r '.id // "'$MISSING'"' <<< "$sub" 2>/dev/null || echo "$MISSING")
-  OFFER_TYPE=$(jq -r '.offerType // ""'          <<< "$sub" 2>/dev/null || echo "")
-
-  # ARM call to get QuotaId (quiet)
-  ARM=$(az rest --method get \
-        --url "https://management.azure.com/subscriptions/${SUB_ID}?api-version=2020-01-01" \
-        --only-show-errors -o json 2>/dev/null || echo '{}')
-
-  QUOTA_ID=$(jq -r '.subscriptionPolicies.quotaId // ""' <<< "$ARM" 2>/dev/null || echo "")
-
-  # Plan (Sub. Type)
-  PLAN=$(classify_plan "$QUOTA_ID" "$OFFER_TYPE" "$MCA_FALLBACK")
-
-  # Try to detect CSP (best-effort): if authorizationSource == "ByPartner" mark as CSP
-  AUTH_SRC=$(jq -r '.authorizationSource // empty' <<< "$ARM" 2>/dev/null || echo "")
-  if [[ "$AUTH_SRC" == "ByPartner" ]]; then
-    PLAN="CSP"
+  if [[ -n "$ba" && -n "$bp" && -n "$is" ]]; then
+    scope="/providers/Microsoft.Billing/billingAccounts/${ba}/billingProfiles/${bp}/invoiceSections/${is}"
+  elif [[ -n "$ba" && -n "$bp" ]]; then
+    scope="/providers/Microsoft.Billing/billingAccounts/${ba}/billingProfiles/${bp}"
+  elif [[ -n "$ba" ]]; then
+    scope="/providers/Microsoft.Billing/billingAccounts/${ba}"
+  else
+    echo ""; return
   fi
 
-  # Owners list (names only, semicolon-separated)
-  OWNERS_JSON=$(az role assignment list \
-    --subscription "$SUB_ID" --role "Owner" --include-inherited \
-    --only-show-errors -o json 2>/dev/null || echo "[]")
-  OWNERS=$(jq -r '.[] | (.principalName // "-")' <<< "$OWNERS_JSON" 2>/dev/null | paste -sd';' - 2>/dev/null)
-  [ -z "${OWNERS:-}" ] && OWNERS="$MISSING"
+  az billing role-assignment list --scope "$scope" -o json 2>/dev/null \
+    | jq -r '.[] | select((.roleDefinitionName // "")=="Owner")
+              | (.principalEmail // .principalName // .signInName // empty)' \
+    | head -n1
+}
 
-  # Transferability to EA
-  TRANSFER=$(is_transferable_to_EA "$PLAN")
+# Fetch Classic Account Administrator email via official REST (works without CLI flag)
+get_classic_account_admin_via_rest() {
+  local sub_id="${1:-}"
+  local url="https://management.azure.com/subscriptions/${sub_id}/providers/Microsoft.Authorization/classicAdministrators?api-version=2015-06-01"
+  local resp
+  resp="$(az rest --only-show-errors --method get --url "$url" -o json 2>/dev/null || echo '{}')"
+  jq -r '.value[]? | select(.properties.role == "Account Administrator") | .properties.emailAddress // empty' <<< "$resp" | head -n1
+}
 
-  # Row
-  printf '"%s","%s","%s","%s"\n' "$SUB_ID" "$PLAN" "$OWNERS" "$TRANSFER" >> "$OUT_CSV"
-done
+# Owner guidance text by type (when actual email isn't retrievable)
+owner_guidance_for_offer() {
+  local offer="${1:-$MISSING}"
+  case "$offer" in
+    MSDN|Pay-As-You-Go) echo "Check in Portal - classic subscription";;
+    EA)                  echo "Check in EA portal - Account Owner";;
+    MCA-online|MCA-E)    echo "Check in Billing (MCA)";;
+    CSP)                 echo "Managed by partner - CSP";;
+    *)                   echo "$MISSING";;
+  esac
+}
+
+# ---------- Main ----------
+
+SUBS="$(az account list --all --only-show-errors -o json 2>/dev/null || echo "[]")"
+
+while IFS= read -r sub; do
+  SUB_ID="$(jq -r '.id // empty' <<< "$sub")"
+  [[ -z "$SUB_ID" ]] && continue
+
+  # --- ARM GET (read-only) for quotaId & authorizationSource
+  ARM_JSON="$(az rest --method get \
+              --url "https://management.azure.com/subscriptions/${SUB_ID}?api-version=2020-01-01" \
+              -o json 2>/dev/null || echo "{}")"
+
+  HAS_ERROR="$(jq -r 'has("error")' <<< "$ARM_JSON" 2>/dev/null || echo "false")"
+  QUOTA_ID=""; AUTH_SRC=""
+
+  if [[ "$HAS_ERROR" != "true" ]]; then
+    QUOTA_ID="$(jq -r '.subscriptionPolicies.quotaId // empty' <<< "$ARM_JSON")"
+    AUTH_SRC="$(jq -r '.authorizationSource // empty' <<< "$ARM_JSON")"
+  fi
+
+  # --- Classify Sub. Type (OFFER)
+  OFFER_LABEL=""
+  if [[ "$HAS_ERROR" != "true" ]]; then
+    OFFER_LABEL="$(offer_from_quota "$QUOTA_ID")"
+    [[ -z "$OFFER_LABEL" && "$AUTH_SRC" == "ByPartner" ]] && OFFER_LABEL="CSP"
+    [[ -z "$OFFER_LABEL" && "$OVERALL_AGR" =~ MicrosoftCustomerAgreement ]] && OFFER_LABEL="MCA-online"
+    [[ -z "$OFFER_LABEL" ]] && OFFER_LABEL="$MISSING"
+  else
+    # ARM forbidden: avoid guessing; try billing hint; else Not available
+    B_SUB="$(az billing subscription show --subscription-id "$SUB_ID" -o json 2>/dev/null || echo "{}")"
+    if jq -e 'has("billingAccountId")' <<< "$B_SUB" >/dev/null 2>&1; then
+      OFFER_LABEL="MCA-online"
+    else
+      OFFER_LABEL="$MISSING"
+    fi
+  fi
+
+  # --- Sub. Owner (ACCOUNT ADMIN / Billing Owner / guidance)
+  SUB_OWNER="$MISSING"
+  case "$OFFER_LABEL" in
+    MSDN|Pay-As-You-Go|EA)
+      # Try exact Account Admin via REST
+      SUB_OWNER="$(get_classic_account_admin_via_rest "$SUB_ID")"
+      if [[ -z "$SUB_OWNER" ]]; then
+        # Fallback to guidance when not visible to caller
+        if [[ "$OFFER_LABEL" == "EA" ]]; then
+          SUB_OWNER="Check in EA portal - Account Owner"
+        else
+          SUB_OWNER="Check in Portal - classic subscription"
+        fi
+      fi
+      ;;
+    MCA-online|MCA-E)
+      # Try Billing Owner if permissions allow; otherwise guidance
+      BO="$(mca_billing_owner_for_sub "$SUB_ID")"
+      if [[ -n "$BO" ]]; then SUB_OWNER="$BO"; else SUB_OWNER="Check in Billing (MCA)"; fi
+      ;;
+    CSP)
+      SUB_OWNER="Managed by partner - CSP"
+      ;;
+    *)
+      SUB_OWNER="$(owner_guidance_for_offer "$OFFER_LABEL")"
+      ;;
+  esac
+
+  # --- Transferability
+  TRANSFER="$(transferable_to_ea "$OFFER_LABEL")"
+
+  printf '"%s","%s","%s","%s"\n' "$SUB_ID" "$OFFER_LABEL" "$SUB_OWNER" "$TRANSFER" >> "$OUT_CSV"
+done < <(jq -c '.[]' <<< "$SUBS")
 
 echo
 echo "Done."
