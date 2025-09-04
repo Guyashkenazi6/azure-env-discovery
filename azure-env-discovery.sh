@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Azure Properties -> CSV (Portal-like, safe & read-only)
+# Azure Properties -> CSV (safe & read-only)
 # Columns: Subscription ID, Sub. Type (OFFER), Sub. Owner, Transferable (Internal)
 # READ-ONLY: no writes/changes.
 
